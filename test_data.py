@@ -67,20 +67,22 @@ with open('./data/peaks.db.mgf.train.label.100','r') as f:
         
         count = 0
         final_result = []
-       
+        label = []
         #对每一个谱
         for i in tmp:
             #先看一张谱的结果
             one_spectrum_result = []
             print('=================================================================')
-            if count >= 1010:
+            if count >= 20:
                 break
             temp_fram = pd.DataFrame()
             #每一个谱的每一行数据
+            spectrum_label = []
             for j in i.split('\n'):
                 a = j.split('\t')
                 c={"mass" : [float(a[0])],"ion" : [a[1]],"label":[a[2]]}
                 df1 = pd.DataFrame(c)
+                spectrum_label.append(a[2])
                 temp_fram = pd.concat([temp_fram,df1])
             for j in i.split('\n'):
                 #图谱上每一个峰代表的粒子向量。
@@ -108,12 +110,16 @@ with open('./data/peaks.db.mgf.train.label.100','r') as f:
                 #有的峰可以减的动，有的峰减不动。所以长度不是一样的        
                 #print(len(ion_list_result))
                 one_spectrum_result.append(ion_list_result)  
-            print(len(one_spectrum_result))                          
+                                    
             final_result.append(one_spectrum_result)
-            
+            label.append(tmp_label)
             count += 1 
-            print(len(final_result))
+            #print(len(one_spectrum_result))  
+            #print(len(final_result))
 
+            #print(spectrum_label)
+            #print(len(spectrum_label))
+        print(len(label))
                         
                         
                         
