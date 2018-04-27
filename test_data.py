@@ -1,5 +1,8 @@
+# -*- coding: utf-8 -*-
 import numpy as np
 import pandas as pd
+from keras.preprocessing import sequence
+
 mass_AA_1 = {
            'A': 71.03711, # 0
            'R': 156.10111, # 1
@@ -56,7 +59,7 @@ data = []
 
 
 #生成数据
-
+seq_length = 600
 tolerance = 0.5
 with open('./data/peaks.db.mgf.train.label.100','r') as f:
         #不等等于NOI
@@ -72,8 +75,8 @@ with open('./data/peaks.db.mgf.train.label.100','r') as f:
         for i in tmp:
             #先看一张谱的结果
             one_spectrum_result = []
-            print('=================================================================')
-            if count >= 20:
+            print('==='*10)
+            if count >= 10:
                 break
             temp_fram = pd.DataFrame()
             #每一个谱的每一行数据
@@ -82,7 +85,10 @@ with open('./data/peaks.db.mgf.train.label.100','r') as f:
                 a = j.split('\t')
                 c={"mass" : [float(a[0])],"ion" : [a[1]],"label":[a[2]]}
                 df1 = pd.DataFrame(c)
-                spectrum_label.append(a[2])
+                tmp_mass_array = np.zeros(21, dtype=int)
+                tmp_mass_array[mass_to_index[a[2]]] = 1 
+                #print(tmp_mass_array)
+                spectrum_label.append(tmp_mass_array)
                 temp_fram = pd.concat([temp_fram,df1])
             for j in i.split('\n'):
                 #图谱上每一个峰代表的粒子向量。
@@ -101,18 +107,28 @@ with open('./data/peaks.db.mgf.train.label.100','r') as f:
                             #看粒子的类型，不是看label的类型
                             tmp_label = intervl_data.iloc[0,0]
                             tmp_index = ion_to_index[tmp_label]
-                           # print(tmp_label)
                             new_ion_list[tmp_index] = 1
-                            ion_list_result.append(list(new_ion_list))
+                            ion_list_result.extend(list(new_ion_list))
                         #如果为周围没有峰怎么办
                         else:
-                            ion_list_result.append(list(np.zeros(19, dtype=int)))
+                            ion_list_result.extend(list(np.zeros(19, dtype=int)))
+                    else:
+                        ion_list_result.extend(list(np.zeros(19, dtype=int)))
+                        
                 #有的峰可以减的动，有的峰减不动。所以长度不是一样的        
                 #print(len(ion_list_result))
-                one_spectrum_result.append(ion_list_result)  
-                                    
-            final_result.append(one_spectrum_result)
-            label.append(tmp_label)
+                one_spectrum_result.append(ion_list_result)
+            #paddding x_train  
+            padding_list = np.zeros((seq_length-len(one_spectrum_result),380 ),dtype=int)
+            one_spectrum_result_np = np.array(one_spectrum_result)
+            f_one_spectrum_result = np.concatenate([one_spectrum_result_np,padding_list],axis=0)
+            #print(f_one_spectrum_result.shape)
+            final_result.append(list(f_one_spectrum_result))
+            
+            #padding label 
+            padding_label_list = np.zeros((seq_length-len(one_spectrum_result),21 ),dtype=int)
+            f_label = np.concatenate([spectrum_label,padding_label_list],axis=0)
+            label.append(f_label)
             count += 1 
             #print(len(one_spectrum_result))  
             #print(len(final_result))
@@ -120,6 +136,10 @@ with open('./data/peaks.db.mgf.train.label.100','r') as f:
             #print(spectrum_label)
             #print(len(spectrum_label))
         print(len(label))
+        
+        
+        
+        
                         
                         
                         
