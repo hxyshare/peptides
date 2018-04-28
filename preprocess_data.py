@@ -1,209 +1,157 @@
 # -*- coding: utf-8 -*-
-import deepnovo_config
-import re
+import numpy as np
+import pandas as pd
+
+mass_AA_1 = {
+           'A': 71.03711, # 0
+           'R': 156.10111, # 1
+           'N': 114.04293, # 2
+           'D': 115.02694, # 3
+           'C': 103.00919, # 4
+           'E': 129.04259, # 5
+           'Q': 128.05858, # 6
+           'G': 57.02146, # 7
+           'H': 137.05891, # 8
+           'I': 113.08406, # 9
+           'L': 113.08406, # 10
+           'K': 128.09496, # 11
+           'M': 131.04049, # 12
+           'F': 147.06841, # 13
+           'P': 97.05276, # 14
+           'S': 87.03203, # 15
+           'T': 101.04768, # 16
+           'W': 186.07931, # 17
+           'Y': 163.06333, # 18
+           'V': 99.06841, # 19
+          }
+       
+index_to_ion = ['NOI', 'y(1+)', 'b(1+)', 'y-NH3(1+)', 'y(2+)', 'y-H2O(1+)', 'b-H2O(1+)',
+                'b-NH3(1+)', 'b(2+)', 'y-H2O(2+)', 'b-H2O(2+)', 'y-NH3(2+)', 'b-NH3(2+)', 'y(3+)', 'b(3+)', 'y-H2O(3+)', 'y-NH3(3+)', 'b-H2O(3+)', 'b-NH3(3+)']
+ion_to_index = {x:i for  i,x in enumerate(index_to_ion)} 
+index_to_mass = ['A','R','N','D','C','E','Q','G','H','I','L','K','M','F','P','S',
+                                                            'T','W','Y','V','NOI']
+mass_to_index = {x:i for i,x in enumerate(index_to_mass)}
+mass_AA_list = list(mass_AA_1.values())
+
+res = {}
+#统计粒子
+with open('./data/peaks.db.mgf.train.label.100','r') as f:
+        #不等等于NOI
+        #label没有在氨基酸序列里面
+        for line in f.readlines():
+            if(len(line.strip())>0):
+                 t  = line.strip().split('\t')[1]
+                 if t not in res:
+                    res[t] = 1
+                 else:
+                    res[t] += 1
+
+t_res = sorted(res.items(),key = lambda x:x[1],reverse = True)
+result = []
+for i in range(len(t_res)):
+   # print(t_res[i][0])
+    result.append(t_res[i][0])
+print(result)
+data = []
 
 
-def inspect_file_location(data_format, input_file):
-  """TODO(nh2tran): docstring."""
+#生成数据
+seq_length = 600
+tolerance = 0.5
+with open('./data/peaks.db.mgf.train.label.100','r') as f:
+        #不等等于NOI
+        #label没有在氨基酸序列里面
+        
+        #print(''.join(f.readlines()).split('\n\n')[1].split('\n')[4].split('\t')[-1]) 
+        tmp =''.join(f.readlines()).strip().split('\n\n')
+        
+        count = 0
+        final_result = []
+        label = []
+        #对每一个谱
+        for i in tmp:
+            #先看一张谱的结果
+            one_spectrum_result = []
+            print('==='*10)
+            if count >= 100:
+                break
+            temp_fram = pd.DataFrame()
+            #每一个谱的每一行数据
+            spectrum_label = []
+            for j in i.split('\n'):
+                a = j.split('\t')
+                c={"mass" : [float(a[0])],"ion" : [a[1]],"label":[a[2]]}
+                df1 = pd.DataFrame(c)
+                tmp_mass_array = np.zeros(21, dtype=int)
+                tmp_mass_array[mass_to_index[a[2]]] = 1 
+                #print(tmp_mass_array)
+                spectrum_label.append(tmp_mass_array)
+                temp_fram = pd.concat([temp_fram,df1])
+            for j in i.split('\n'):
+                #图谱上每一个峰代表的粒子向量。
+                #添加自己
+                ion_list_result = []
+                new_ion_list = np.zeros(19 ,dtype=int)
+                bb = ion_to_index[j.split('\t')[1]]
+                new_ion_list[bb] = 1
+                ion_list_result.extend(new_ion_list)
+                for k in mass_AA_list:
+                    new_ion_list = np.zeros(19 ,dtype=int)
+                    
+                    if (float(j.split('\t')[0])-k)>0:
+                        tmpdata = float(j.split('\t')[0])-k
+                        #print('tmpdata',tmpdata)
+                        #print('k',k)
+                        temp_fram.index = temp_fram['mass']
+                        left_threshold = tmpdata - tolerance
+                        right_threshold = tmpdata + tolerance
+                        intervl_data = temp_fram[np.logical_and(temp_fram.index <right_threshold ,temp_fram.index>left_threshold)]
+                        if not intervl_data.empty :
+                            #看粒子的类型，不是看label的类型
+                            tmp_label = intervl_data.iloc[0,0]
+                            tmp_index = ion_to_index[tmp_label]
+                            new_ion_list[tmp_index] = 1
+                            ion_list_result.extend(list(new_ion_list))
+                        #如果为周围没有峰怎么办
+                        else:
+                            ion_list_result.extend(list(np.zeros(19, dtype=int)))
+                    else:
+                        ion_list_result.extend(list(np.zeros(19, dtype=int)))
+                        
+                #有的峰可以减的动，有的峰减不动。所以长度不是一样的        
+                #print(len(ion_list_result))
+                one_spectrum_result.append(ion_list_result)
+            #paddding x_train  
+            padding_list = np.zeros((seq_length-len(one_spectrum_result),399 ),dtype=int)
+            one_spectrum_result_np = np.array(one_spectrum_result)
+            f_one_spectrum_result = np.concatenate([one_spectrum_result_np,padding_list],axis=0)
+            #print(f_one_spectrum_result.shape)
+            final_result.append(list(f_one_spectrum_result))
+            
+            #padding label 
+            padding_label_list = np.zeros((seq_length-len(one_spectrum_result),21 ),dtype=int)
+            f_label = np.concatenate([spectrum_label,padding_label_list],axis=0)
+            label.append(f_label)
+            count += 1 
+            print(count)
+            #print(len(one_spectrum_result))  
+            #print(len(final_result))
 
-  print("inspect_file_location(), input_file = ", input_file)
-
-  if data_format == "msp":
-    keyword = "Name"
-  elif data_format == "mgf":
-    keyword = "BEGIN IONS"
-
-  spectra_file_location = []
-  with open(input_file, mode="r") as file_handle:
-    line = True
-    while line:
-      file_location = file_handle.tell()
-      line = file_handle.readline()
-      if keyword in line:
-        spectra_file_location.append(file_location)
-
-  return spectra_file_location
-
-
-def read_spectra(file_handle, data_format, spectra_locations):
-  """TODO(nh2tran): docstring."""
-
-  print("read_spectra()")
-
-  #~ # for testing
-  #~ test_time = 0.0
-
-  data_set = [[] for _ in deepnovo_config._buckets]
-  counter = 0
-  counter_skipped = 0
-  counter_skipped_mod = 0
-  counter_skipped_len = 0
-  counter_skipped_mass = 0
-  counter_skipped_mass_precision = 0
-  avg_peak_count = 0.0
-  avg_peptide_len = 0.0
-
-  if data_format == "mgf":
-    keyword = "BEGIN IONS"
-
-  for location in spectra_locations:
-
-    file_handle.seek(location)
-    line = file_handle.readline()
-    assert (keyword in line), "ERROR: read_spectra(); wrong format"
-
-    unknown_modification = False
-
-    # READ AN ENTRY
-    if data_format == "mgf":
-
-      # header TITLE
-      line = file_handle.readline()
-
-      # header PEPMASS
-      line = file_handle.readline()
-      peptide_ion_mz = float(re.split('=|\n', line)[1])
-
-      # header CHARGE
-      line = file_handle.readline()
-      charge = float(re.split('=|\+', line)[1]) # pylint: disable=anomalous-backslash-in-string,line-too-long
-
-      # header SCANS
-      line = file_handle.readline()
-      #~ scan = int(re.split('=', line)[1])
-      scan = re.split('=|\n', line)[1]
-
-      # header RTINSECONDS
-      line = file_handle.readline()
-
-      # header SEQ
-      line = file_handle.readline()
-      raw_sequence = re.split('=|\n|\r', line)[1]
-      raw_sequence_len = len(raw_sequence)
-      print(raw_sequence)
-      peptide = []
-      index = 0
-      while index < raw_sequence_len:
-        if raw_sequence[index] == "(":
-          if peptide[-1] == "C" and raw_sequence[index:index+8] == "(+57.02)":
-            peptide[-1] = "Cmod"
-            index += 8
-          elif peptide[-1] == 'M' and raw_sequence[index:index+8] == "(+15.99)":
-            peptide[-1] = 'Mmod'
-            index += 8
-          elif peptide[-1] == 'N' and raw_sequence[index:index+6] == "(+.98)":
-            peptide[-1] = 'Nmod'
-            index += 6
-          elif peptide[-1] == 'Q' and raw_sequence[index:index+6] == "(+.98)":
-            peptide[-1] = 'Qmod'
-            index += 6
-          else: # unknown modification
-          #~ elif ("".join(raw_sequence[index:index+8])=="(+42.01)"):
-            #~ print("ERROR: unknown modification!")
-            #~ print("raw_sequence = ", raw_sequence)
-            #~ sys.exit()
-            unknown_modification = True
-            break
-        else:
-          peptide.append(raw_sequence[index])
-          index += 1
-
-      # skip if unknown_modification
-      if unknown_modification:
-        counter_skipped += 1
-        counter_skipped_mod += 1
-        continue
-
-      # skip if neutral peptide_mass > MZ_MAX(3000.0)
-      peptide_mass = peptide_ion_mz*charge - charge*deepnovo_config.mass_H
-      if peptide_mass > deepnovo_config.MZ_MAX:
-        counter_skipped += 1
-        counter_skipped_mass += 1
-        continue
-
-      # TRAINING-SKIP: skip if peptide length > MAX_LEN(30)
-      # TESTING-ERROR: not allow peptide length > MAX_LEN(50)
-      peptide_len = len(peptide)
-      if peptide_len > deepnovo_config.MAX_LEN:
-        #~ print("ERROR: peptide_len {0} exceeds MAX_LEN {1}".format(
-            #~ peptide_len,
-            #~ deepnovo_config.MAX_LEN))
-        #~ sys.exit()
-        counter_skipped += 1
-        counter_skipped_len += 1
-        continue
-
-      # DEPRECATED-TRAINING-ONLY: testing peptide_mass & sequence_mass
-      sequence_mass = sum(deepnovo_config.mass_AA[aa] for aa in peptide)
-      sequence_mass += deepnovo_config.mass_N_terminus + deepnovo_config.mass_C_terminus
-      if (abs(peptide_mass-sequence_mass)
-          > deepnovo_config.PRECURSOR_MASS_PRECISION_INPUT_FILTER):
-        #~ print("ERROR: peptide_mass and sequence_mass not matched")
-        #~ print("peptide = ", peptide)
-        #~ print("peptide_list_mod = ", peptide_list_mod)
-        #~ print("peptide_list = ", peptide_list)
-        #~ print("peptide_ion_mz = ",peptide_ion_mz)
-        #~ print("charge = ", charge)
-        #~ print("peptide_mass  ", peptide_mass)
-        #~ print("sequence_mass ", sequence_mass)
-        #~ sys.exit()
-        counter_skipped_mass_precision += 1
-        counter_skipped += 1
-        continue
-
-      # read spectrum
-      spectrum_mz = []
-      spectrum_intensity = []
-      line = file_handle.readline()
-      while not "END IONS" in line:
-        # parse pairs of "mz intensity"
-        mz, intensity = re.split(' |\n', line)[:2]
-        intensity_float = float(intensity)
-        mz_float = float(mz)
-        if mz_float > deepnovo_config.MZ_MAX: # skip this peak
-          line = file_handle.readline()
-          continue
-        spectrum_mz.append(mz_float)
-        spectrum_intensity.append(intensity_float)
-        line = file_handle.readline()
-
-    # AN ENTRY FOUND
-    counter += 1
-    if counter % 10000 == 0:
-      print("  reading peptide %d" % counter)
-
-    # Average number of peaks per spectrum
-    peak_count = len(spectrum_mz)
-    avg_peak_count += peak_count
-
-    # Average peptide length
-    avg_peptide_len += peptide_len
-
-  #~ # for testing
-  #~ print("test_time = {0:.2f}".format(test_time))
-
-  print("  total peptide read %d" % counter)
-  print("  total peptide skipped %d" % counter_skipped)
-  print("  total peptide skipped by mod %d" % counter_skipped_mod)
-  print("  total peptide skipped by len %d" % counter_skipped_len)
-  print("  total peptide skipped by mass %d" % counter_skipped_mass)
-  print("  total peptide skipped by mass precision %d"
-        % counter_skipped_mass_precision)
-
-  print("  average #peaks per spectrum %.1f" % (avg_peak_count/counter))
-  print("  average peptide length %.1f" % (avg_peptide_len/counter))
-
-  return data_set, counter
-
-
-spectra_file_location_valid = inspect_file_location(
-       deepnovo_config.data_format,
-       deepnovo_config.input_file_train)
-
-#文件指针的位置，也就是begin开始的位置字节，或者是字符
-print(spectra_file_location_valid)
-with open(deepnovo_config.input_file_train, 'r') as file_handle:
-    test_set, _ = read_spectra(file_handle,
-                               deepnovo_config.data_format,
-                               spectra_file_location_valid)
-
+            #print(spectrum_label)
+            #print(len(spectrum_label))
+        import pickle as pkl
+        pickel_write = open('data_no_sw.pkl','wb')
+        pkl.dump({'data': final_result,
+            'label': label},pickel_write)
+        
+        with open('data_no_sw.pkl', 'rb') as f3:
+            loaded_data = pkl.load(f3)
+            data1, label1 = \
+                tuple(loaded_data[k] for k in
+                      ['data', 'label'])
+        
+        
+                        
+                        
+                        
+                                                
